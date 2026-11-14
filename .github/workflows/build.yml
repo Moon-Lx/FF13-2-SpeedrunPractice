@@ -1,0 +1,84 @@
+# CI for the PUBLIC FF13-2-SpeedrunPractice repo. This file lives in the private monorepo at
+# ff132_practice/publish/build.yml and is placed at .github/workflows/build.yml by publish.sh --
+# deliberately NOT under the monorepo's own .github/, so it never runs there.
+#
+# zig cross-compiles the x86 Windows DLL on a Linux runner: no Windows runner, no game files.
+# A v* tag builds, packages the release zip and publishes it; pull requests and a manual
+# dispatch build only. NOT plain pushes to main: publish.sh pushes main and the tag together,
+# at the same commit, so a branch trigger would only ever compile the tag's tree a second time.
+name: build
+
+on:
+  push:
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed to create a Release on tags
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      ZIG_VERSION: "0.16.0"   # keep in sync with the private repo's vendored toolchain
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install zig ${{ env.ZIG_VERSION }}
+        run: |
+          set -euo pipefail
+          V="$ZIG_VERSION"; found=""
+          # zig changed its archive naming across versions; try both orders.
+          for name in "zig-x86_64-linux-$V" "zig-linux-x86_64-$V"; do
+            if curl -fSL "https://ziglang.org/download/$V/$name.tar.xz" -o zig.tar.xz; then
+              found="$name"; break
+            fi
+          done
+          test -n "$found" || { echo "::error::zig $V download failed"; exit 1; }
+          mkdir -p "$HOME/zigtc"
+          tar -xJf zig.tar.xz -C "$HOME/zigtc" --strip-components=1
+          echo "ZIG=$HOME/zigtc/zig" >> "$GITHUB_ENV"
+
+      - name: Build dinput8.dll
+        run: ./src/build.sh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: FF13-2-SpeedrunPractice-dinput8
+          path: src/out/dinput8.dll
+          if-no-files-found: error
+
+      - name: Publish Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # One flat zip: everything lands in the game's bin folder, so "extract the zip there"
+          # is the whole install. No ini: every setting has a built-in default and the settings
+          # screen writes the file, so an ini in the zip would overwrite a player's own settings
+          # when an update is extracted over it. LICENSE travels with the binary because GPLv3
+          # asks it to; the README comes along because the zip is what gets passed around.
+          zip -j "FF13-2-SpeedrunPractice-$GITHUB_REF_NAME.zip" \
+            src/out/dinput8.dll \
+            ff13-2-practice.bat \
+            ff13-2-run.bat \
+            README.md \
+            README.ja.md \
+            LICENSE
+          # A release for this tag can already exist when a version is re-cut before anyone has
+          # it; replace the asset then rather than failing. Notes come from
+          # .github/RELEASE_NOTES.md in the tagged tree, never generated.
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              "FF13-2-SpeedrunPractice-$GITHUB_REF_NAME.zip" --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --notes-file .github/RELEASE_NOTES.md
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "FF13-2-SpeedrunPractice-$GITHUB_REF_NAME.zip" \
+              --title "FF13-2-SpeedrunPractice $GITHUB_REF_NAME" \
+              --notes-file .github/RELEASE_NOTES.md
+          fi
