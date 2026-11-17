@@ -12,7 +12,7 @@ A mod for the PC (Steam) version of FINAL FANTASY XIII-2, with features that mak
 
 - Windows
 - FINAL FANTASY XIII-2 on Steam (PC)
-  - Any region should work, though this is unverified.  
+  - Any region should work, though only the Japan region has been verified.  
     The mod speaks Japanese when the game's language in Steam is Japanese, English for every other language.  
     Developed and tested on the Japan-region install; reports from other regions are welcome too.
 
@@ -49,23 +49,31 @@ Note: to update (install another version), place the contents of the new zip the
 ## Notes for timed runs
 
 On Speedrun.com, using a mod that is not allowed for the game or category is against the rules.  
-Do not use this tool (mod) when timing a run to submit to Speedrun.com or elsewhere.  
+Do not use this mod when timing a run to submit to Speedrun.com or elsewhere.  
 **Just having this mod installed changes some behaviour** (the "Skip the Historia Crux on load" and "Skip the recap after a load" settings, which are on by default, and the location line it adds to the save list).  
 For timed runs, start the game without the mod, for example with the batch files below.
 
 ### Keeping the mod out of the game entirely, e.g. for timed runs
 
-Starting the game by running one of the two included bat files (batch files) makes this easy.  
+If you want to keep the mod out of the game entirely, e.g. for timed runs, starting the game from one of the two included bat files (batch files) makes this easy.  
 `ff13-2-run.bat`: starts FF13-2 without the mod  
 `ff13-2-practice.bat`: starts FF13-2 with the mod
 - They turn the mod on and off by renaming `dinput8.dll` to a name the game does not load (`dinput8.dll.off`) and back
-- With the "Save slot limit" set to 41 or more, the game without the mod quits at the save list if save 41 or later exists, so `ff13-2-run.bat` hides them before starting the game by renaming `ff13_2-NN.dat` in the save folder to `ff13_2-NN.dat.parked`
-  - `ff13-2-practice.bat` puts them back. The mod also puts them back when it starts, so starting the game with the mod from Steam restores them too
+- With the "Save slot limit" set to 41 or more, the game without the mod quits at the save list if save 41 or later exists, so `ff13-2-run.bat` takes them out of the game's reach before starting it by renaming `ff13_2-NN.dat` in the save folder to `ff13_2-NN.dat.parked`
+  - Starting the game with `ff13-2-practice.bat`, or renaming the file back to `dinput8.dll` by hand and starting the game, makes the mod take the `.parked` off again
+- With a category picked under "Category for starts without the mod" on the hotkeys-and-settings screen, `ff13-2-run.bat` lists that category's saves 1 to 40 in the save list
+- Saves made while the game runs without the mod are kept as that category's saves after the next start with the mod
 - Running either one twice in a row changes nothing
 - They cannot be used while the game is running (quit it first)
-- You may also move or rename the dll by hand instead of using the bat files (but if save 41 or later exists, move those saves out too)
+- You may also move or rename the dll by hand instead of using the bat files. In that case, if save 41 or later exists, move those saves out too
 - The bat files also work through a shortcut you create and click
 - The bat files can be renamed, as long as the extension stays
+
+## Using it with other mods
+
+- **It cannot be used together with the [FPS Fix](https://github.com/MrTyton/Final-Fantasy-Speedruns/tree/master/Final%20Fantasy%20XIII/FPS%20Fix) (the one whose files are named `dinput8.dll` and `FF13Fix.ini`).** Both use the file name `dinput8.dll`, so they cannot sit in the same folder
+  - The included bat files stop without renaming anything when the `dinput8.dll` in place is not this mod's (the FPS Fix's, for example)
+- It can be used together with the Drop Mod (Nekton and Gahongas Drop Rate Mod). Neither the mod nor its bat files interfere with the Drop Mod.
 
 ## When publishing videos or images
 
@@ -104,6 +112,10 @@ Features that are switched ON/OFF keep their ON/OFF state after the game is rest
       - Note that the autosave slot's contents get overwritten
     - Keep a save's note when saving over it (default: **OFF**)
       - When you save over a slot after giving it a note with the "Tidy the game's save list" feature, the note stays when ON and is erased when OFF
+    - Category for starts without the mod (default: none)
+      - **Turn Steam Cloud sync off for this game when using this feature**
+      - Picks the category listed in the save list when the game starts without the mod through `ff13-2-run.bat` (details under "Notes for timed runs")
+      - None: the category in use as it is (only saves 41 and later are hidden)
     - Skip the Historia Crux on load (default: ON)
       - A save made inside an area loads straight into that area at the place it was saved
       - You can go to the Historia Crux at any time with "Historia Crux" on the pause menu
@@ -289,25 +301,27 @@ Features that are switched ON/OFF keep their ON/OFF state after the game is rest
 - `{save folder}\categories\`
   - Created when you make a category. It holds the saves of the categories not in use
 - `{save folder}\ff13_2-NN.dat.parked`
-  - Saves 41 and later, renamed by `ff13-2-run.bat`. They are put back by `ff13-2-practice.bat` or when the mod starts
+  - Saves 41 and later (all of them while a "Category for starts without the mod" is picked), renamed by `ff13-2-run.bat`. They are put back when the mod starts
+- `ff13-2-srpractice.nomod`
+  - Placed inside the category picked under "Category for starts without the mod" (in `ff13-2-mods\` while it is the category in use)
 
 ## When something goes wrong, or the game crashes
 
 If you can, please do the following.
 
-### 1. First, copy the log somewhere safe
+### 1. Copying the log somewhere safe
 
-Copy `ff13-2-mods\ff13-2-srpractice.log` to another place, such as the desktop.
+First, copy `ff13-2-mods\ff13-2-srpractice.log` to another place, such as the desktop.
 
 > **Note: when the game is started again, this log moves to `ff13-2-mods\prev.log` and a new log begins; the launch after that overwrites `prev.log` too.**
 > Copy it before the game has been started twice (the log from right after the crash is the only clue). When the game crashes, the mod also tries to write where it crashed into this log.
 
-### 2. If you can reproduce it, reproduce it with `verbose`
+### 2. Reproducing with `verbose`
 
-Set "Log level" on the hotkeys-and-settings screen to `verbose`, then do the same thing again to reproduce the problem.
+If you can reproduce it, set "Log level" on the hotkeys-and-settings screen to `verbose`, then do the same thing again to reproduce the problem.
 That makes the cause much easier to find. Once reproduced, copy that log somewhere safe in the same way.
 
-### 3. Sending the log helps a great deal
+### 3. Sending the log
 
 Getting in touch with the symptom (what you did and what happened) and the copied log helps a great deal.
 
@@ -317,6 +331,7 @@ Getting in touch with the symptom (what you did and what happened) and the copie
 - The files and folders the mod created can be deleted too
   - **Exception: the save folder's `categories\` folder holds the saves of the categories not in use.** Before deleting it, move the saves you need out of `categories\` (directly into the save folder), or back up the whole folder
 - **If you set the "Save slot limit" to 41 or more, first move saves 41 and later to free numbers 1 to 40, or out of the save folder.** Left in place, they make the game without the mod quit the moment the save list opens
+- After starting the game with `ff13-2-run.bat`, start it once with the mod before deleting. The saves `ff13-2-run.bat` hid (`.parked`) come back when the mod starts
 
 ## Safety
 
@@ -334,7 +349,8 @@ The author accepts no responsibility for lost save data or any other damage.
 
 ## Credits
 
-[WhiteCryptTool](https://github.com/Surihix/WhiteCryptTool) by Surihix (GNU GPL v3.0) — the save-data decryption in this mod is derived from WhiteCryptTool.
+[WhiteCryptTool](https://github.com/Surihix/WhiteCryptTool) by Surihix (GNU GPL v3.0)  
+The save-data decryption in this mod is derived from WhiteCryptTool.
 
 ## License
 

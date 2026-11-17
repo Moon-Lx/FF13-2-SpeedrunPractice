@@ -41,6 +41,10 @@
 #define FF132_CATNAME_FILE "ff13-2-srpractice.category.txt"
 #define FF132_CATJNL_NAME  "ff13-2-srpractice.categories.jnl"
 #define FF132_RENJNL_NAME  "ff13-2-srpractice.renum.jnl"
+// ff13-2-run.bat reads both by these names. The first marks the category the unmodded game is
+// shown (it travels with that category's files); the second says the launcher lent it out.
+#define FF132_NOMOD_NAME   "ff13-2-srpractice.nomod"
+#define FF132_LENT_NAME    "ff13-2-srpractice.lent"
 #define FF132_PREV_NAME  "prev.log"
 #define FF132_TAG        "[FF13-2-SRP] "
 
@@ -434,9 +438,21 @@ int  ff132_send_one(int srcSlot, const char* dstDir, int dstSlot, int* recOk);
 int  ff132_shell_recycle(const wchar_t* list, const char* what);
 // 1 = a switch was cut short and its journal is still on disk: nothing may move or delete a save.
 int  ff132_recovery_owns_saves(void);
-// Worker thread, before anything reads the save folder: ff13_2-40..98.dat.parked in its root back
-// to .dat (parked by the launcher for the unmodded game). An existing .dat is never overwritten.
+// Worker thread, before anything reads the save folder: ff13_2-NN.dat.parked in its root back to
+// .dat (parked by the launcher for the unmodded game). An existing .dat is never overwritten.
 void ff132_saves_unpark(void);
+// Worker thread, before ff132_saves_unpark: when the launcher lent a category to the unmodded game,
+// every save in the save folder's root goes back into that category's folder. 0 = not all of them
+// did (or it could not tell where): the lent mark stays, and ff132_saves_unpark must not run.
+int  ff132_nomod_return(void);
+// Any thread, while the mod runs: a lend ff132_nomod_return could not finish is still standing.
+int  ff132_nomod_stuck(void);
+// The category the unmodded game is shown: -2 = none, -1 = the one in use, i = parked category i.
+// The getter and the name are safe from the render thread; the setter runs on the worker and
+// returns 0 when refused (Steam Cloud on, an unfinished switch, a file that would not write).
+int  ff132_nomod_at(void);
+int  ff132_nomod_set(int at);
+void ff132_nomod_label(int at, char* utf8, size_t n);
 // Worker thread: the save number the last refused switch found past what the game can list, or -1
 // when the last switch was not refused for that.
 int  ff132_cat_switch_high(void);

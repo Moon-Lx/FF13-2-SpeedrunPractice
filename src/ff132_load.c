@@ -685,7 +685,10 @@ static void __cdecl on_main_state(uint32_t esp) {
     // to execute, and restoring here would turn that send back into 0x13 and drive LOAD_EMPTY
     // straight on to STATE_ZONE.
     if (g_loadOk && ns != MS_LOAD && ns != MS_LOAD_END && ns != MS_LOAD_EMPTY) apply(0);
-    if (ns == MS_TITLE) g_recapWindow = 0;
+    if (ns == MS_TITLE) {
+        g_recapWindow = 0;
+        if (ff132_nomod_stuck()) ff132_flash_c(ui_text(T_NOMOD_STUCK), FF132_COL_ERR);
+    }
 }
 
 static void __cdecl on_zone_jump(uint32_t esp) {

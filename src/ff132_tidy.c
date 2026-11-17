@@ -1893,8 +1893,9 @@ void ff132_tidy_install(void) {
     // First of all: an interrupted category switch has to be finished before anything below reads
     // a save folder that is half one category and half another, and an interrupted renumber before
     // anything reads a folder where half the saves are under a temp name. Ahead of both, saves the
-    // launcher parked for the unmodded game come back, so recovery and every scan see them.
-    ff132_saves_unpark();
+    // launcher parked for the unmodded game come back, so recovery and every scan see them -- after
+    // the category it lent that game has taken its saves back out of the root.
+    if (ff132_nomod_return()) ff132_saves_unpark();
     ff132_cats_install();
     renum_recover();
     // Here, on the worker and before the sort hook goes in: otherwise the first list opened reads

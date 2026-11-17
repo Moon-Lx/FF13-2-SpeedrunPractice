@@ -45,16 +45,17 @@ static const char* fn_label(const char* name) {
 enum {
     R_H_KEYS, R_K_HELP, R_K_SPEED, R_K_KILL, R_K_ENC, R_K_RAUTO, R_K_SLOT, R_K_TIDY, R_K_BATTLE,
     R_KEYS,
-    R_H_SET, R_FOCUS, R_SLOTS, R_REDIR, R_KNOTE,
+    R_H_SET, R_FOCUS, R_SLOTS, R_REDIR, R_KNOTE, R_NOMOD,
     R_HIST, R_RECAP, R_MULT, R_LOG, R_N
 };
-enum { K_HEAD, K_KEY, K_KEYS, K_BOOL, K_SLOT, K_SLOTS, K_MULT, K_LOG };
+enum { K_HEAD, K_KEY, K_KEYS, K_BOOL, K_SLOT, K_SLOTS, K_NOMOD, K_MULT, K_LOG };
 static int row_kind(int r) {
     if (r == R_H_KEYS || r == R_H_SET) return K_HEAD;
     if (r >= R_K_HELP && r <= R_K_BATTLE) return K_KEY;
     if (r == R_KEYS) return K_KEYS;
     if (r == R_REDIR) return K_SLOT;
     if (r == R_SLOTS) return K_SLOTS;
+    if (r == R_NOMOD) return K_NOMOD;
     if (r == R_MULT) return K_MULT;
     if (r == R_LOG) return K_LOG;
     return K_BOOL;
@@ -108,6 +109,7 @@ static volatile int  g_slotsNa = 0;         // ff132_slots_unavailable() at the 
 static volatile int  g_slotReach = 0;       // ff132_slots_reach() at the last refresh
 static volatile int  g_slotNeed = -1;       // ff132_slots_needed() at the last refresh
 static volatile int  g_slotAbove = 0;       // saves numbered past the game's own count, same
+static volatile int  g_nomodCloud = 0;      // steam_cloud_on() == 1, same
 // The working slot's ON stop, when a save of the player's own blocks it at the last refresh (-1 = free).
 static volatile int  g_naLast = -1;
 static int wslot_last_target(void);
@@ -122,6 +124,7 @@ static void slot_refresh(void) {
     g_slotReach = ff132_slots_reach();
     g_slotNeed = ff132_slots_needed();
     g_slotAbove = g_slotNeed > FF132_SLOTS_GAME ? ff132_slots_saves_from(FF132_SLOTS_GAME) : 0;
+    g_nomodCloud = steam_cloud_on() == 1;
     int t = wslot_last_target();
     g_naLast = (t > 0 && save_work_slot_foreign(t)) ? t : -1;
 }
@@ -397,6 +400,16 @@ static void wslot_cycle(int dir) {
         setting_write("save", "autosave_redirect", on_off(g_autosaveRedirect));
 }
 
+// ---- the category the unmodded game is shown -------------------------------------------------
+// Its stops: none, the category in use, then every parked one.
+static void nomod_cycle(int dir) {
+    slot_refresh();
+    if (g_nomodCloud) { ff132_flash_c(ui_text(T_SET_NOMOD_CLOUD), FF132_COL_MENU_OFF); return; }
+    int n = ff132_cats_count();
+    int pos = (ff132_nomod_at() + 2 + (dir > 0 ? 1 : n + 1)) % (n + 2);
+    if (!ff132_nomod_set(pos - 2)) ff132_flash_c(ui_text(T_TD_CAT_FAIL), FF132_COL_MENU_OFF);
+}
+
 // ---- left/right and confirm -------------------------------------------------------------------
 static const char* const kLogName[3] = { "quiet", "normal", "verbose" };
 
@@ -422,6 +435,9 @@ void ff132_setup_cycle(int dir) {
         break;
     case K_SLOTS:
         slots_cycle(dir);
+        break;
+    case K_NOMOD:
+        nomod_cycle(dir);
         break;
     case K_LOG: {
         int l = g_logLevel;
@@ -613,7 +629,7 @@ static void arrows_fit(char* out, size_t n, const char* value) { arrows_fit_ex(o
 // widest label, since the Japanese labels are measured rather than counted.
 #define ROW_TAB "\t"
 static unsigned long row_text(int r, int sel, int cap, char* out, size_t n) {
-    char k[128];
+    char k[256];
     const char* mark = (r == sel) ? ">" : " ";
     int dim = 0;
     switch (row_kind(r)) {
@@ -669,6 +685,14 @@ static unsigned long row_text(int r, int sel, int cap, char* out, size_t n) {
         dim = g_slotsNa != 0 || slots_locked() || !slots_any_open();
         arrows_fit_ex(k, sizeof k, sv, dim);
         snprintf(out, n, "%s %s:" ROW_TAB "%s", mark, ui_text(T_SET_L_SLOTS), k);
+        break;
+    }
+    case K_NOMOD: {
+        char nv[FF132_CATNAME_U8];
+        ff132_nomod_label(ff132_nomod_at(), nv, sizeof nv);
+        dim = g_nomodCloud;
+        arrows_fit_ex(k, sizeof k, nv, dim);
+        snprintf(out, n, "%s %s:" ROW_TAB "%s", mark, ui_text(T_SET_L_NOMOD), k);
         break;
     }
     case K_MULT: {
@@ -779,6 +803,9 @@ static void footer_text(int sel, int cap, char* out, size_t n) {
         }
         break;
     case R_KNOTE:    snprintf(body, sizeof body, "%s", ui_text(T_SET_F_KNOTE));  break;
+    case R_NOMOD:
+        snprintf(body, sizeof body, "%s", ui_text(g_nomodCloud ? T_SET_NOMOD_CLOUD : T_SET_F_NOMOD));
+        break;
     case R_RECAP:    snprintf(body, sizeof body, "%s", ui_text(T_SET_F_RECAP));  break;
     case R_MULT: {
         int o = snprintf(body, sizeof body, ui_text(T_SET_F_MULT), a, b, ok, ff132_gs_steps_arrow());

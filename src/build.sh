@@ -9,7 +9,7 @@
 # Default = release build. Set FF132_DIAG=1 to also compile the RE investigation aids:
 #     FF132_DIAG=1 ./build.sh
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"            # <repo>/ff132_practice/src or <repo>/src
+here="$(cd "$(dirname "$0")" && pwd)"            # <repo>/ff132_sr_practice/src or <repo>/src
 if [ -d "$here/../../common/lib" ]; then
     lib="$(cd "$here/../../common/lib" && pwd)"
     libspec="../../common"                       # what the dirty-tree check watches

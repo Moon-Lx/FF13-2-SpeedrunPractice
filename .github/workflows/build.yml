@@ -1,5 +1,5 @@
 # CI for the PUBLIC FF13-2-SpeedrunPractice repo. This file lives in the private monorepo at
-# ff132_practice/publish/build.yml and is placed at .github/workflows/build.yml by publish.sh --
+# ff132_sr_practice/publish/build.yml and is placed at .github/workflows/build.yml by publish.sh --
 # deliberately NOT under the monorepo's own .github/, so it never runs there.
 #
 # zig cross-compiles the x86 Windows DLL on a Linux runner: no Windows runner, no game files.
@@ -21,9 +21,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      ZIG_VERSION: "0.16.0"   # keep in sync with the private repo's vendored toolchain
+      ZIG_VERSION: "0.17.1"   # keep in sync with the private repo's vendored toolchain
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install zig ${{ env.ZIG_VERSION }}
         run: |
@@ -44,7 +44,7 @@ jobs:
         run: ./src/build.sh
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: FF13-2-SpeedrunPractice-dinput8
           path: src/out/dinput8.dll

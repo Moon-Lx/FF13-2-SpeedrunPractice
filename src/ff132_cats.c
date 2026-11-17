@@ -18,7 +18,8 @@
 
 // Save categories: more than one set of saves, swapped without restarting the game.
 // The category IN USE is the game's own save folder, untouched; every other one is parked under
-// {save folder}\categories\{name}\ together with the one sidecar that is keyed by slot number.
+// {save folder}\categories\{name}\ together with the one sidecar that is keyed by slot number, and
+// the marker that names it as the category ff13-2-run.bat lends the unmodded game.
 //
 // Threads: all of it runs on the hotkey worker. The name getters are read from the render thread
 // while it draws the menu's rows, so each copies out of a fixed array with a bounded read.
@@ -44,7 +45,8 @@ static int name_eq(const char* a, const char* b) { return name_cmp(a, b) == 0; }
 // Every number a save file can carry (two digits). Whatever moves a whole category walks all of
 // them whatever the count is now: a file left behind would mix into the next category.
 #define CAT_SLOTS_MAX 100
-#define CAT_FILES(n)  ((n) + 1)          // the saves, plus the direct-load sidecar
+#define CAT_FILES(n)  ((n) + 2)          // the saves, the direct-load sidecar, the no-mod marker
+#define CAT_MARKER(n) ((n) + 1)          // the no-mod marker's index among them
 
 static char g_catCur[FF132_CATNAME_BYTES] = "main";
 static char g_catPrev[FF132_CATNAME_BYTES] = "";
@@ -57,6 +59,7 @@ static volatile int g_catSel   = -1;     // the delete row's pick; -1 only when 
 static volatile int g_swSel    = -1;     // the switch row's pick; -1 = none picked
 
 static volatile int   g_delArm   = -1;   // the g_catSel this confirm belongs to; -1 = idle
+static volatile int   g_nomodAt  = -2;   // ff132_nomod_at's answer
 
 static int file_exists(const char* p) { return GetFileAttributesA(p) != INVALID_FILE_ATTRIBUTES; }
 
@@ -220,8 +223,8 @@ static int slot_count(void) {
     return n < CAT_SLOTS_MAX ? n : CAT_SLOTS_MAX;
 }
 
-// Two paths per index: the sidecar lives beside the exe while it is in use, yet a parked category
-// keeps its copy next to the saves it belongs to.
+// Two paths per index: the sidecar and the marker live beside the exe while their category is in
+// use, yet a parked category keeps its copies next to the saves they belong to.
 static int cat_file_pair(int i, int slots, const char* dir, char* act, size_t an,
                          char* in, size_t bn) {
     if (i < slots) {
@@ -229,8 +232,9 @@ static int cat_file_pair(int i, int slots, const char* dir, char* act, size_t an
         snprintf(in, bn, "%s\\ff13_2-%02d.dat", dir, i);
         return 1;
     }
-    if (!data_file(act, an, FF132_SLOTS_NAME)) return 0;
-    snprintf(in, bn, "%s\\%s", dir, FF132_SLOTS_NAME);
+    const char* name = (i == CAT_MARKER(slots)) ? FF132_NOMOD_NAME : FF132_SLOTS_NAME;
+    if (!data_file(act, an, name)) return 0;
+    snprintf(in, bn, "%s\\%s", dir, name);
     return 1;
 }
 
@@ -377,6 +381,8 @@ static void cat_journal_drop(void) {
 int ff132_recovery_owns_saves(void) {
     char p[MAX_PATH];
     if (cat_journal_path(p, sizeof p) && file_exists(p)) return 1;
+    // A lend not fully returned: the root still holds the lent category's saves.
+    if (data_file(p, sizeof p, FF132_LENT_NAME) && file_exists(p)) return 1;
     return ff132_tidy_renum_pending();
 }
 
@@ -391,6 +397,79 @@ static int list_add_at(const char* dir, const char* name, void* vn) {
     snprintf(g_catList[*n], FF132_CATNAME_BYTES, "%s", name);
     (*n)++;
     return 0;
+}
+
+// ---- the category the unmodded game is shown ---------------------------------------------------
+// One marker file, kept with that category's files (cat_file_pair moves it in a switch), so the
+// launcher can find it by a fixed name whatever the category is called.
+static int nomod_path(int at, char* p, size_t n) {
+    if (at == -1) return data_file(p, n, FF132_NOMOD_NAME);
+    char dir[MAX_PATH];
+    if (at < 0 || at >= g_catListN || !cat_dir_of(dir, sizeof dir, g_catList[at])) return 0;
+    return snprintf(p, n, "%s\\" FF132_NOMOD_NAME, dir) < (int)n;
+}
+
+static void nomod_scan(void) {
+    int at = -2;
+    char p[MAX_PATH];
+    for (int i = -1; i < g_catListN; i++) {
+        if (!nomod_path(i, p, sizeof p) || !file_exists(p)) continue;
+        if (at == -2) { at = i; continue; }
+        // The launcher lends the first one it finds; a single marker is the only reading the two
+        // are sure to agree on.
+        DeleteFileA(p);
+        ff132_loga(FF132_TAG "no-mod category: a second marker removed (%s)\n", p);
+    }
+    g_nomodAt = at;
+}
+
+int ff132_nomod_at(void) { return g_nomodAt; }
+
+static void nomod_quoted(char* out, size_t n) {
+    int at = g_nomodAt;
+    if (at == -1) snprintf(out, n, "'%s'", g_catCur);
+    else if (at >= 0 && at < g_catListN) snprintf(out, n, "'%s'", g_catList[at]);
+    else snprintf(out, n, "(none)");
+}
+
+void ff132_nomod_label(int at, char* utf8, size_t n) {
+    if (!utf8 || !n) return;
+    if (at == -1) copy_u8(utf8, n, g_catCurU8, sizeof g_catCurU8);
+    else if (at >= 0 && at < g_catListN) copy_u8(utf8, n, g_catListU8[at], sizeof g_catListU8[at]);
+    else snprintf(utf8, n, "%s", ui_text(T_SET_NOMOD_NONE));
+}
+
+int ff132_nomod_set(int at) {
+    if (at < -2 || at >= g_catListN) return 0;
+    if (steam_cloud_on() == 1) {
+        ff132_log(FF132_TAG "no-mod category: refused -- Steam Cloud is on\n");
+        return 0;
+    }
+    if (ff132_recovery_owns_saves()) {
+        ff132_loga(FF132_TAG "no-mod category: refused -- an unfinished switch owns these files\n");
+        return 0;
+    }
+    static const char kText[] =
+        "ff13-2-run.bat shows the unmodded game the saves of the category this file is with.\r\n"
+        "Picked on FF13-2-SpeedrunPractice's settings screen.\r\n";
+    char p[MAX_PATH] = "", q[MAX_PATH], nm[FF132_CATNAME_BYTES + 2];
+    int was = g_nomodAt, ok = 1;
+    // New marker first: a failure on either side leaves the old pick standing, never none.
+    if (at != -2 && (!nomod_path(at, p, sizeof p) || !ff132_write_whole(p, kText, sizeof kText - 1))) {
+        ff132_loga(FF132_TAG "no-mod category: cannot write %s (err %lu)\n", p,
+               (unsigned long)GetLastError());
+        ok = 0;
+    } else if (was != -2 && was != at && nomod_path(was, q, sizeof q) && !DeleteFileA(q)
+               && GetLastError() != ERROR_FILE_NOT_FOUND) {
+        ff132_loga(FF132_TAG "no-mod category: cannot remove %s (err %lu)\n", q,
+               (unsigned long)GetLastError());
+        if (at != -2) DeleteFileA(p);
+        ok = 0;
+    }
+    nomod_scan();
+    nomod_quoted(nm, sizeof nm);
+    ff132_log(FF132_TAG "no-mod category: %s\n", nm);
+    return ok;
 }
 
 void ff132_cats_refresh(void) {
@@ -412,6 +491,7 @@ void ff132_cats_refresh(void) {
     g_catSel = sel;
     g_swSel = -1;
     g_delArm = -1;
+    nomod_scan();
 }
 
 int ff132_cats_count(void) { return g_catListN; }
@@ -732,6 +812,7 @@ static int cat_copy_all(const char* dir) {
     DWORD t0 = GetTickCount();
     for (int i = 0; i < CAT_FILES(slots); i++) {
         char a[MAX_PATH], b[MAX_PATH];
+        if (i == CAT_MARKER(slots)) continue;    // the marker names one category, not its twin
         if (!cat_file_pair(i, slots, dir, a, sizeof a, b, sizeof b) || !file_exists(a)) continue;
         gate_keep_alive();
         if (CopyFileA(a, b, TRUE)) n++;
@@ -946,16 +1027,88 @@ int ff132_cat_delete_hold(void) {
 }
 
 // ---- saves parked for the unmodded game -------------------------------------------------------
-// ff13-2-run.bat renames ff13_2-40..98.dat in the save folder root to *.dat.parked (the unmodded
-// game closes when its list finds one); this undoes it for a start that bypassed the practice .bat.
-// A same-folder rename keeps the write time the sidecars key a save by. Never onto an existing file.
+// ff13-2-run.bat renames saves in the save folder root to *.dat.parked: 40..98 always (the unmodded
+// game closes when its list finds one), all of 00..99 when it lends a category. 99 stays parked:
+// no slot count reaches it, and any list that met it would close the game. This undoes it on the
+// next start with the mod, through the practice .bat or not. A same-folder rename keeps the write
+// time the sidecars key a save by. Never onto an existing file.
 #define UNPARK_SUFFIX ".dat.parked"
 static int parked_number(const char* f) {
     if (strlen(f) != 9 + sizeof UNPARK_SUFFIX - 1 || _strnicmp(f, "ff13_2-", 7)
         || f[7] < '0' || f[7] > '9' || f[8] < '0' || f[8] > '9' || _stricmp(f + 9, UNPARK_SUFFIX))
         return -1;
     int n = (f[7] - '0') * 10 + (f[8] - '0');
-    return (n >= FF132_SLOTS_GAME && n < FF132_SLOTS_MAX) ? n : -1;
+    return n < FF132_SLOTS_MAX ? n : -1;
+}
+
+static int nomod_dir_at(const char* dir, const char* name, void* vout) {
+    char p[MAX_PATH];
+    (void)name;
+    if (snprintf(p, sizeof p, "%s\\" FF132_NOMOD_NAME, dir) >= (int)sizeof p || !file_exists(p)) return 0;
+    snprintf((char*)vout, MAX_PATH, "%s", dir);
+    return 1;
+}
+
+// The launcher writes the lent mark only once every save of the category in use is parked, so
+// whatever .dat the root holds while it stands came from the lent category or from the unmodded
+// game. The mark goes before the unpark: left standing, the next start would take the saves this
+// one brings back for the lent category's.
+// Anything short of a full return keeps the mark and answers 0, and the caller then leaves the
+// parked saves too: with the mark gone, or with them back, the root would mix the two categories.
+int ff132_nomod_return(void) {
+    char lent[MAX_PATH], root[MAX_PATH], dir[MAX_PATH] = "";
+    if (!data_file(lent, sizeof lent, FF132_LENT_NAME) || !file_exists(lent)) return 1;
+    if (!save_root_dir(root, sizeof root)) {
+        ff132_loga(FF132_TAG "no-mod saves: the save folder could not be resolved -- left as they are\n");
+        return 0;
+    }
+    int err = 0;
+    if (parked_walk(root, nomod_dir_at, dir, &err) < 0 || (!dir[0] && err)) {
+        ff132_loga(FF132_TAG "no-mod saves: the categories could not all be listed -- left as they are\n");
+        return 0;
+    }
+    if (!dir[0]) {
+        // A fresh folder: one the player made under this name would refuse every number it holds.
+        // Nor the one in use, which has no folder there until it is switched away.
+        char cats[MAX_PATH], name[16];
+        if (!cats_root(cats, sizeof cats)) return 0;
+        name_load();
+        CreateDirectoryA(cats, NULL);
+        for (int k = 1; k < 100 && !dir[0]; k++) {
+            snprintf(name, sizeof name, k == 1 ? "nomod" : "nomod%d", k);
+            if (name_eq(name, g_catCur)) continue;
+            if (cat_dir_of(dir, sizeof dir, name) && !CreateDirectoryA(dir, NULL)) dir[0] = 0;
+        }
+        if (!dir[0]) {
+            ff132_loga(FF132_TAG "no-mod saves: no folder to return them to -- left as they are\n");
+            return 0;
+        }
+        ff132_loga(FF132_TAG "no-mod saves: no category carries the marker -- they go to %s\n", dir);
+    }
+    int moved = 0, failed = 0;
+    for (int n = 0; n < CAT_SLOTS_MAX; n++) {
+        char src[MAX_PATH], dst[MAX_PATH];
+        snprintf(src, sizeof src, "%s\\ff13_2-%02d.dat", root, n);
+        if (!file_exists(src)) continue;
+        snprintf(dst, sizeof dst, "%s\\ff13_2-%02d.dat", dir, n);
+        if (MoveFileExA(src, dst, MOVEFILE_COPY_ALLOWED)) { moved++; continue; }
+        ff132_loga(FF132_TAG "no-mod saves: %s -> %s failed (err %lu) -- left in the save folder\n",
+               src, dst, (unsigned long)GetLastError());
+        failed++;
+    }
+    if (failed) {
+        ff132_loga(FF132_TAG "no-mod saves: %d returned to %s, %d not -- the saves in use stay "
+                   "hidden until every one goes back\n", moved, dir, failed);
+        return 0;
+    }
+    DeleteFileA(lent);
+    ff132_loga(FF132_TAG "no-mod saves: %d returned to %s\n", moved, dir);
+    return 1;
+}
+
+int ff132_nomod_stuck(void) {
+    char p[MAX_PATH];
+    return data_file(p, sizeof p, FF132_LENT_NAME) && file_exists(p);
 }
 
 void ff132_saves_unpark(void) {
@@ -977,7 +1130,7 @@ void ff132_saves_unpark(void) {
     } while (FindNextFileA(h, &fd));
     FindClose(h);
     int restored = 0, failed = 0, lo = -1, hi = -1;
-    for (int n = FF132_SLOTS_GAME; n < FF132_SLOTS_MAX; n++) {
+    for (int n = 0; n < FF132_SLOTS_MAX; n++) {
         if (!done[n]) continue;
         char src[MAX_PATH], dst[MAX_PATH];
         snprintf(dst, sizeof dst, "%s\\ff13_2-%02d.dat", root, n);
@@ -1010,10 +1163,19 @@ void ff132_cats_install(void) {
     // of one category and half of another, and the header scan behind this would cache that.
     if (cat_switch_recover()) ff132_load_sidecar_reload();
     ff132_cats_refresh();
+    // The launcher cannot ask Steam, and a lend renames saves between sessions, behind Cloud's back.
+    if (g_nomodAt != -2 && steam_cloud_on() == 1) {
+        char p[MAX_PATH];
+        if (nomod_path(g_nomodAt, p, sizeof p)) DeleteFileA(p);
+        ff132_loga(FF132_TAG "no-mod category: Steam Cloud is on -- the pick is dropped\n");
+        nomod_scan();
+    }
     char pv[FF132_CATNAME_BYTES + 2] = "(none)", st[FF132_CATNAME_BYTES + 2] = "(none)";
     int sel = g_catSel;
     if (g_catPrev[0]) snprintf(pv, sizeof pv, "'%s'", g_catPrev);
     if (sel >= 0 && sel < g_catListN) snprintf(st, sizeof st, "'%s'", g_catList[sel]);
+    char nm[FF132_CATNAME_BYTES + 2];
+    nomod_quoted(nm, sizeof nm);
     ff132_loga(FF132_TAG "category: in use '%s', %d other(s) parked, previous %s,"
-                  " delete row starts on %s\n", g_catCur, g_catListN, pv, st);
+                  " delete row starts on %s, no-mod %s\n", g_catCur, g_catListN, pv, st, nm);
 }

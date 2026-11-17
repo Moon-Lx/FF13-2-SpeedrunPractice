@@ -3,29 +3,23 @@ rem FF13-2-SpeedrunPractice launcher -- practice tools ON.
 rem Restores dinput8.dll (from dinput8.dll.off if it was parked) and starts
 rem the game through Steam. Idempotent: declares a state, does not toggle.
 rem ASCII only on purpose: cmd.exe parses this file in the OEM codepage.
+rem The saves ff13-2-run.bat hid, and the category it lent, are put back by the mod itself as it
+rem starts -- the same as for a start straight from Steam.
 setlocal
 cd /d "%~dp0"
 
 tasklist /fi "imagename eq ffxiii2img.exe" 2>nul | find /i "ffxiii2img.exe" >nul && goto running
 
-if exist "dinput8.dll" goto unpark
+rem Only the mod's own dll counts: another dinput8.dll (the FPS Fix) would start without the mod.
+if exist "dinput8.dll" goto active
 if not exist "dinput8.dll.off" goto missing
+findstr /m /l /c:"ff13-2-srpractice" "dinput8.dll.off" >nul || goto foreign
 ren "dinput8.dll.off" "dinput8.dll"
 if errorlevel 1 goto locked
+goto launch
 
-:unpark
-rem Saves 41 and up that ff13-2-run.bat hid. One whose name is taken again stays hidden.
-set "SAVEDIR=%LOCALAPPDATA%\SquareEnix\FinalFantasyXIII-2\save"
-set "CLASH="
-for /l %%n in (40,1,98) do if exist "%SAVEDIR%\ff13_2-%%n.dat.parked" (
-    if exist "%SAVEDIR%\ff13_2-%%n.dat" (
-        echo [!] ff13_2-%%n.dat already exists -- ff13_2-%%n.dat.parked was left as it is.
-        set "CLASH=1"
-    ) else (
-        ren "%SAVEDIR%\ff13_2-%%n.dat.parked" "ff13_2-%%n.dat"
-    )
-)
-if defined CLASH pause
+:active
+findstr /m /l /c:"ff13-2-srpractice" "dinput8.dll" >nul || goto foreign
 
 :launch
 echo Practice tools: ON   (dinput8.dll in place)
@@ -35,6 +29,12 @@ exit /b 0
 
 :running
 echo [!] FINAL FANTASY XIII-2 is running. Close it, then run this again.
+pause
+exit /b 1
+
+:foreign
+echo [!] The dinput8.dll here is not this mod's (another mod, such as the FPS Fix?).
+echo     Nothing was renamed, and the game was not started.
 pause
 exit /b 1
 
